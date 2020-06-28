@@ -1,0 +1,137 @@
+<html>
+
+<head>
+    <!-- author: yulan.lx@alibaba-inc.com -->
+    
+    <!-- Image Manipulation Library CSS -->
+    <link href="./cropper.css" rel="stylesheet">
+    <!-- ElementUI CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
+    <!-- Load TensorFlow.js -->
+    <script src="./tfjs.js"></script>
+    <!-- Load MobileNet -->
+    <script src="./mobilenet.js"></script>
+    <!-- Load KNN Classifier -->
+    <script src="./knn-classifier.js"></script>
+    <!-- Load Image Manipulation Library -->
+    <script src="./cropper.js"></script>
+</head>
+
+<body>
+    <div id="app">
+        <input type="text" id="testInput" placeholder="光标选中我后Ctrl+V粘贴截图哦～" size="30" />
+        <!-- <button id="btn">识别组件</button> -->
+        <el-button type="primary" round @click="recognize">识别组件</el-button>
+        <img id='class0' crossorigin="anonymous" src='./coupon.jpg' width="224" height="224" style="position:fixed;visibility: hidden;" />
+        <img id='class1' crossorigin="anonymous" src='./multi-col-grid.jpg' width="224" height="224" style="position:fixed;visibility: hidden;" />
+        <img id='class2' crossorigin="anonymous" src='./sale_tag.jpg' width="224" height="224" style="position:fixed;visibility: hidden;"/>
+        <div id='cropper-container' style="width: 640px;height: 480px;">
+        </div>
+    </div>
+</body>
+<!-- Place your code in the script tag below. You can also use an external .js file -->
+  <!-- import Vue before Element -->
+  <script src="https://unpkg.com/vue/dist/vue.js"></script>
+  <!-- import JavaScript -->
+  <script src="https://unpkg.com/element-ui/lib/index.js"></script>
+<script>
+    let loading;
+    const componentNames = ['优惠卡片', '多列宫格','促销标签']
+    let app = new Vue({
+      el: '#app',
+      mounted:function(){
+        loading = this.$loading({
+          lock: true,
+          text: '神经网络模型加载中,请稍等...',
+          spinner: 'el-icon-loading',
+          background: 'rgba(0, 0, 0, 0.7)'
+        });
+      },
+      data: function() {
+        return { visible: false }
+      },
+      methods:{
+        recognize: async () => {
+            // Make a prediction.
+            const x = tf.browser.fromPixels(cropper.getCroppedCanvas());
+            const xlogits = mobilenetModule.infer(x, 'conv_preds');
+            const result = await classifier.predictClass(xlogits);
+            alert('该组件可能是:' + componentNames[result.label]);
+
+        }
+      }
+    })
+
+    let cropper;
+    (function () {
+        var imgReader = function (item) {
+            var blob = item.getAsFile(),
+                reader = new FileReader();
+
+            reader.onload = function (e) {
+                if(cropper){
+                    cropper.destroy()
+                    document.querySelector('#cropper-container').removeChild(document.querySelector('.cropper-preview'));
+                }
+                var img = new Image();
+                img.src = e.target.result;
+                img.className = 'cropper-preview'
+                document.querySelector('#cropper-container').appendChild(img);
+                // const image = document.getElementById('test');
+                cropper = new Cropper(img, {
+                });
+            };
+            reader.readAsDataURL(blob);
+        };
+
+        document.getElementById('testInput').addEventListener('paste', function (e) {
+            var clipboardData = e.clipboardData,
+                i = 0,
+                items, item, types;
+
+            if (clipboardData) {
+                items = clipboardData.items;
+                if (!items) {
+                    return;
+                }
+                item = items[0];
+                types = clipboardData.types || [];
+                for (; i < types.length; i++) {
+                    if (types[i] === 'Files') {
+                        item = items[i];
+                        break;
+                    }
+                }
+                if (item && item.kind === 'file' && item.type.match(/^image\//i)) {
+                    imgReader(item);
+                }
+            }
+        });
+    })();
+
+    window.onload = async () => {
+        // Create the classifier.
+        window.classifier = knnClassifier.create();
+        // Load mobilenet.
+        window.mobilenetModule = await mobilenet.load();
+        // Add MobileNet activations to the model repeatedly for all classes.
+        [1,1,1].forEach((item,index)=>{
+            const img = tf.browser.fromPixels(document.getElementById('class'+index));
+            const logits = mobilenetModule.infer(img, 'conv_preds');
+            classifier.addExample(logits, index);
+            classifier.addExample(logits, index);
+            classifier.addExample(logits, index);
+            classifier.addExample(logits, index);
+        })
+        // elementui
+        loading.close()
+        app.$message({
+          message: '加载完成，可以使用啦~',
+          type: 'success'
+        });
+    }
+
+
+</script>
+
+</html>
